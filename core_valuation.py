@@ -1,28 +1,30 @@
 import pandas as pd
-import re
 import math
 
-def apply_valuation_matrix(results, target_data):
-    """تطبيق مصفوفة التعديلات الكمية وفق دليل تقييم العقارات البلدية"""
-    adjusted_results = results.copy()
+def apply_taqeem_logic(comparables, target):
+    """
+    تطبيق منطق المقارنة الفنية وفق معايير الهيئة السعودية للمقيمين (تقييم).
+    """
+    adjusted_list = []
     
-    def calculate_adjustment(row):
-        adj = 1.0
-        # 1. تعديل النشاط (Highest and Best Use)
-        if str(row['النشاط الرئيسي']).strip() == target_data['activity'].strip():
-            adj += 0.10  # ميزة تطابق النشاط
+    for _, comp in comparables.iterrows():
+        # 1. التعديلات النوعية (النشاط)
+        act_adj = 1.05 if comp['النشاط الرئيسي'] == target['activity'] else 0.95
         
-        # 2. تعديل الموقع (عامل القرب من الحرم - خصوصية مكة)
-        target_dist = math.sqrt((target_data['lat']-21.4225)**2 + (target_data['lon']-39.8262)**2)
-        comp_dist = math.sqrt((row['lat']-21.4225)**2 + (row['lon']-39.8262)**2)
-        if target_dist < comp_dist: adj += 0.12 # ميزة الموقع الأفضل
+        # 2. التعديلات الزمنية (Time Adjustment)
+        time_adj = 1.02  # افتراض تضخم سنوي 2% وفق السوق الحالي
         
-        return adj
+        # 3. تعديل الموقع (المسافة من الحرم)
+        dist_comp = math.sqrt((comp['lat']-21.4225)**2 + (comp['lon']-39.8262)**2)
+        dist_target = math.sqrt((target['lat']-21.4225)**2 + (target['lon']-39.8262)**2)
+        loc_adj = 1.10 if dist_target < dist_comp else 0.90 # ميزة القرب
+        
+        # القيمة المعدلة لكل مقارن
+        adj_price = comp['القيمة السنوية للعقد'] * act_adj * time_adj * loc_adj
+        adjusted_list.append(adj_price)
+        
+    return sum(adjusted_list) / len(adjusted_list)
 
-    adjusted_results['factor'] = adjusted_results.apply(calculate_adjustment, axis=1)
-    adjusted_results['adjusted_price'] = adjusted_results['القيمة السنوية للعقد'] * adjusted_results['factor']
-    return adjusted_results
-
-def get_grace_period(duration):
-    """حساب فترة التجهيز - المادة 24 (10% من العقد بحد أقصى 3 سنوات)"""
-    return min(duration * 0.10, 3.0)
+def get_legal_grace_period(years):
+    """المادة 24: فترة التجهيز (10% من مدة العقد، بحد أقصى 3 سنوات)"""
+    return min(years * 0.10, 3.0)
