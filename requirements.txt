@@ -1,0 +1,6 @@
+streamlit
+pandas
+pydeck
+reportlab
+arabic-reshaper
+python-bidi
