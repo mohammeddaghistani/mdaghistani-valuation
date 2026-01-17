@@ -1,71 +1,51 @@
 import streamlit as st
 import pandas as pd
-import re
-import pydeck as pdk
-from datetime import datetime
-from core_valuation import apply_valuation_matrix, get_grace_period
-from report_engine import generate_professional_report
+from core_valuation import apply_taqeem_logic, get_legal_grace_period
+from report_engine import generate_formal_report
 
-st.set_page_config(page_title="mdaghistani | تقييم مكة", layout="wide")
+st.set_page_config(page_title="mdaghistani | v3.0", layout="wide")
 
-# دالة ذكية لتحميل ومعالجة البيانات من CSV
-@st.cache_data
-def load_and_clean_data():
-    df = pd.read_csv("data.csv")
-    df['القيمة السنوية للعقد'] = pd.to_numeric(df['القيمة السنوية للعقد'], errors='coerce').fillna(0)
-    def extract_coords(url):
-        match = re.search(r'([-?\d\.]+),([-?\d\.]+)', str(url))
-        return (float(match.group(1)), float(match.group(2))) if match else (None, None)
-    if 'lat' not in df.columns:
-        df[['lat', 'lon']] = df['رابط الموقع'].apply(lambda x: pd.Series(extract_coords(x)))
-    return df[df['lat'].notna()]
+# تنسيق CSS مخصص لتغيير شكل التطبيق تماماً
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stButton>button { background-color: #1B4F72; color: white; border-radius: 5px; height: 3em; width: 100%; }
+    .metric-card { background-color: white; padding: 20px; border-radius: 10px; box-shadow: 2px 2px 10px #eee; border-top: 5px solid #D4AF37; }
+    </style>
+""", unsafe_allow_html=True)
 
-st.sidebar.title("mdaghistani System")
-st.title("🕋 نظام الخبير العقاري mdaghistani")
-st.caption("متوافق مع لائحة التصرف بالعقارات البلدية ومعايير (تقييم) 2026")
+st.title("🕋 نظام mdaghistani للتحليل العقاري المتقدم")
+st.markdown("---")
 
-tab1, tab2 = st.tabs(["🎯 محرك التقييم المعتمد", "🔥 خريطة التركز السعري"])
+col_sidebar, col_main = st.columns([1, 2.5])
 
-with tab1:
-    c1, c2 = st.columns([1, 1.5])
-    with c1:
-        st.subheader("📍 معطيات العقار")
-        lat = st.number_input("Lat", value=21.4225, format="%.6f")
-        lon = st.number_input("Lon", value=39.8262, format="%.6f")
-        act = st.selectbox("النشاط", ["الأنشطة الرياضية", "مواقف السيارات", "تجزئة"])
-        years = st.slider("مدة الاستثمار (سنوات)", 1, 50, 15)
+with col_sidebar:
+    st.subheader("⚙️ بارامترات الموقع")
+    lat = st.number_input("إحداثي العرض", value=21.4225, format="%.6f")
+    lon = st.number_input("إحداثي الطول", value=39.8262, format="%.6f")
+    activity = st.selectbox("النشاط المستهدف", ["الأنشطة الرياضية", "مواقف السيارات", "تجزئة", "تعليمي"])
+    term = st.slider("مدة الاستثمار (سنة)", 5, 50, 20)
+
+with col_main:
+    if st.button("تشغيل خوارزمية التقييم (Comparison Matrix)"):
+        # محاكاة لبيانات المقارنة من ملفك
+        data = pd.read_csv("data.csv")
+        data['dist'] = (data['lat']-lat)**2 + (data['lon']-lon)**2
+        comparables = data.sort_values('dist').head(5)
         
-    with c2:
-        if st.button("تحليل القيمة المقارنة", use_container_width=True):
-            data = load_and_clean_data()
-            # جلب أقرب 10 صفقات وتطبيق المصفوفة
-            subset = data.copy()
-            subset['dist'] = (subset['lat']-lat)**2 + (subset['lon']-lon)**2
-            top_deals = subset.sort_values('dist').head(10)
-            
-            df_final = apply_valuation_matrix(top_deals, {"lat": lat, "lon": lon, "activity": act})
-            val = df_final['adjusted_price'].mean()
-            grace = get_grace_period(years)
+        final_val = apply_taqeem_logic(comparables, {"lat": lat, "lon": lon, "activity": activity})
+        grace = get_legal_grace_period(term)
+        
+        # عرض النتائج في كروت احترافية
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"<div class='metric-card'><h4>قيمة الإيجار السنوي</h4><h2>{final_val:,.2f} ريال</h2></div>", unsafe_allow_html=True)
+        with c2:
+            st.markdown(f"<div class='metric-card'><h4>فترة التجهيز (المادة 24)</h4><h2>{grace} سنوات</h2></div>", unsafe_allow_html=True)
+        
+        # زر التحميل بصيغة رسمية
+        pdf = generate_formal_report({"value": final_val, "basis": "Market Value", "grace": grace})
+        st.download_button("📂 تصدير تقرير 'تقييم' الفني", pdf, "Valuation_Report.pdf")
 
-            # بطاقة النتيجة
-            st.markdown(f"""
-                <div style="background-color:#fffdf5; padding:25px; border-radius:15px; border-right:10px solid #d4af37;">
-                    <h2 style="color:#d4af37; margin:0;">{val:,.2f} ريال</h2>
-                    <p style="color:#5d4037;">الإيجار السوقي السنوي المقترح</p>
-                    <p style="color:#8d6e63; font-size:14px;">فترة التجهيز (المادة 24): {grace} سنوات</p>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            pdf = generate_professional_report({
-                "value": val, "date": datetime.now().strftime("%Y-%m-%d"),
-                "grace": grace, "basis": "Market Rent", "report_id": f"MD-{datetime.now().year}"
-            })
-            st.download_button("📥 تحميل التقرير الرسمي (PDF)", pdf, "mdaghistani_valuation.pdf")
-
-with tab2:
-    st.subheader("تحليل تركز القيم في مكة")
-    map_data = load_and_clean_data()
-    st.pydeck_chart(pdk.Deck(
-        layers=[pdk.Layer('HeatmapLayer', data=map_data, get_position='[lon, lat]', get_weight='القيمة السنوية للعقد', radius_pixels=50)],
-        initial_view_state=pdk.ViewState(latitude=21.4225, longitude=39.8262, zoom=11)
-    ))
+st.markdown("---")
+st.caption("تم تطوير هذا النظام ليتوافق مع تحديثات لائحة التصرف بالعقارات البلدية 1444هـ وسياسات الهيئة السعودية للمقيمين المعتمدين.")
