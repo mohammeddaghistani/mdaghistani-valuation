@@ -3,81 +3,72 @@ import pandas as pd
 import pydeck as pdk
 import os
 from core_valuation import apply_taqeem_logic, get_legal_grace_period
-from report_engine import generate_formal_report
 
-# إعدادات المتصفح والجوال
-st.set_page_config(page_title="mdaghistani | التقييم العقاري", layout="wide", initial_sidebar_state="collapsed")
+# إعداد الصفحة للجوال والكمبيوتر
+st.set_page_config(page_title="mdaghistani | منصة التقييم", layout="wide")
 
-# تصميم فخم (CSS) متوافق مع الجوال
+# تنسيق بصري فخم
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Kufi+Arabic:wght@400;700&display=swap');
-    html, body, [class*="css"] { font-family: 'Noto Kufi Arabic', sans-serif; direction: rtl; text-align: right; }
-    .main { background-color: #fcfcfc; }
+    .main { background-color: #f4f7f6; }
     .stButton>button { 
-        background: linear-gradient(135deg, #1a4731 0%, #2d5a44 100%); 
-        color: white; border: None; padding: 15px; border-radius: 12px; width: 100%; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        background: linear-gradient(135deg, #1e4d3a 0%, #0d2b1e 100%); 
+        color: white; border-radius: 12px; height: 50px; border: none; font-size: 18px;
     }
-    .card { 
-        background: white; padding: 20px; border-radius: 15px; border-right: 8px solid #c5a059; 
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px;
+    .result-card { 
+        background-color: white; padding: 25px; border-radius: 15px; 
+        border-right: 10px solid #c5a059; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
     }
-    [data-testid="stHeader"] { background: rgba(0,0,0,0); }
     </style>
 """, unsafe_allow_html=True)
 
-# عرض الشعار في الأعلى (تأكد من وجود logo.png في GitHub)
+# عرض الشعار
 if os.path.exists("logo.png"):
-    col_logo, _ = st.columns([1, 4])
-    with col_logo:
-        st.image("logo.png", width=150)
+    st.image("logo.png", width=180)
+else:
+    st.title("🏛️ mdaghistani")
 
-st.title("🕋 منصة mdaghistani الاستشارية")
-st.caption("نظام تقييم معتمد وفق لائحة العقارات البلدية ومعايير (تقييم)")
+st.subheader("نظام التقييم العقاري الاستشاري")
 
-# التحميل الآمن للبيانات
+# تحميل البيانات
 @st.cache_data
 def load_data():
-    try:
+    if os.path.exists("data.csv"):
         return pd.read_csv("data.csv")
-    except:
-        return pd.DataFrame()
+    return pd.DataFrame()
 
-# الواجهة الرئيسية
-with st.container():
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.subheader("🔍 معطيات التقييم الفني")
-    c1, c2 = st.columns(2)
-    with c1:
-        lat = st.number_input("خط العرض", value=21.4225, format="%.6f")
-        act = st.selectbox("النشاط", ["الأنشطة الرياضية", "مواقف السيارات", "تجزئة", "صحي"])
-    with c2:
-        lon = st.number_input("خط الطول", value=39.8262, format="%.6f")
-        term = st.slider("مدة العقد (سنوات)", 1, 50, 20)
-    
-    if st.button("بدء تحليل القيمة السوقية"):
+# المحتوى الرئيسي
+col1, col2 = st.columns([1, 1.5])
+
+with col1:
+    st.markdown("### 📍 معطيات الموقع")
+    lat = st.number_input("خط العرض", value=21.4225, format="%.6f")
+    lon = st.number_input("خط الطول", value=39.8262, format="%.6f")
+    act = st.selectbox("النشاط", ["الأنشطة الرياضية", "مواقف السيارات", "تجزئة"])
+    years = st.slider("مدة العقد", 1, 50, 20)
+
+with col2:
+    if st.button("تشغيل التحليل الفني"):
         df = load_data()
         if not df.empty:
-            final_val = apply_taqeem_logic(df, {"lat": lat, "lon": lon, "activity": act})
-            grace = get_legal_grace_period(term)
+            val = apply_taqeem_logic(df, {"lat": lat, "lon": lon, "activity": act})
+            grace = get_legal_grace_period(years)
             
-            st.markdown("---")
-            res_col1, res_col2 = st.columns(2)
-            with res_col1:
-                st.markdown(f"<div style='text-align:center;'><h3>الإيجار السنوي</h3><h1 style='color:#1a4731;'>{final_val:,.2f} ريال</h1></div>", unsafe_allow_html=True)
-            with res_col2:
-                st.markdown(f"<div style='text-align:center;'><h3>فترة التجهيز</h3><h1 style='color:#c5a059;'>{grace} سنوات</h1></div>", unsafe_allow_html=True)
-            
-            # تصدير التقرير الفاخر
-            pdf = generate_formal_report({"value": final_val, "grace": grace, "act": act})
-            st.download_button("📥 تحميل التقرير الرسمي المعتمد", pdf, "mdaghistani_valuation.pdf")
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown(f"""
+                <div class="result-card">
+                    <p style="color:#666; margin:0;">القيمة الإيجارية السنوية التقديرية</p>
+                    <h1 style="color:#1e4d3a;">{val:,.2f} ريال</h1>
+                    <hr>
+                    <p style="color:#666; margin:0;">فترة التجهيز (المادة 24)</p>
+                    <h2 style="color:#c5a059;">{grace} سنوات</h2>
+                </div>
+            """, unsafe_allow_html=True)
 
-# خريطة تفاعلية أسفل الصفحة
-st.subheader("📍 النطاق الجغرافي للصفقات")
+# خريطة احترافية
+st.markdown("### 🗺️ النطاق الجغرافي")
 df_map = load_data()
 if not df_map.empty:
     st.pydeck_chart(pdk.Deck(
-        layers=[pdk.Layer('ScatterplotLayer', data=df_map, get_position='[lon, lat]', get_color='[26, 71, 49, 160]', get_radius=200)],
-        initial_view_state=pdk.ViewState(latitude=21.4225, longitude=39.8262, zoom=11)
+        initial_view_state=pdk.ViewState(latitude=21.4225, longitude=39.8262, zoom=11),
+        layers=[pdk.Layer('ScatterplotLayer', data=df_map, get_position='[lon, lat]', get_color='[30, 77, 58, 160]', get_radius=200)]
     ))
