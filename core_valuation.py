@@ -1,30 +1,39 @@
-import pandas as pd
 import math
 
-def apply_taqeem_logic(comparables, target):
+def apply_taqeem_logic(df, target):
     """
-    تطبيق منطق المقارنة الفنية وفق معايير الهيئة السعودية للمقيمين (تقييم).
+    تطبيق مصفوفة التعديلات الكمية (Quantitative Adjustments)
+    وفق دليل تقييم العقارات البلدية ص 34.
     """
-    adjusted_list = []
+    # حساب المسافة لكل مقارن عن العقار المستهدف
+    df = df.copy()
+    df['distance'] = df.apply(lambda r: math.sqrt((r['lat']-target['lat'])**2 + (r['lon']-target['lon'])**2), axis=1)
     
-    for _, comp in comparables.iterrows():
-        # 1. التعديلات النوعية (النشاط)
-        act_adj = 1.05 if comp['النشاط الرئيسي'] == target['activity'] else 0.95
+    # اختيار أقرب 5 مقارنات (Comparables)
+    comps = df.sort_values('distance').head(5)
+    
+    adjusted_prices = []
+    for _, row in comps.iterrows():
+        base_price = row['القيمة السنوية للعقد']
+        adjustment_factor = 1.0
         
-        # 2. التعديلات الزمنية (Time Adjustment)
-        time_adj = 1.02  # افتراض تضخم سنوي 2% وفق السوق الحالي
+        # 1. تعديل النشاط (0.10+ إذا تطابق، 0.05- إذا اختلف)
+        if str(row['النشاط الرئيسي']).strip() == target['activity'].strip():
+            adjustment_factor += 0.10
+        else:
+            adjustment_factor -= 0.05
+            
+        # 2. تعديل الموقع (القرب من الحرم كميزة تنافسية)
+        dist_to_haram_comp = math.sqrt((row['lat']-21.4225)**2 + (row['lon']-39.8262)**2)
+        dist_to_haram_target = math.sqrt((target['lat']-21.4225)**2 + (target['lon']-39.8262)**2)
         
-        # 3. تعديل الموقع (المسافة من الحرم)
-        dist_comp = math.sqrt((comp['lat']-21.4225)**2 + (comp['lon']-39.8262)**2)
-        dist_target = math.sqrt((target['lat']-21.4225)**2 + (target['lon']-39.8262)**2)
-        loc_adj = 1.10 if dist_target < dist_comp else 0.90 # ميزة القرب
+        if dist_to_haram_target < dist_to_haram_comp:
+            adjustment_factor += 0.07  # العقار الهدف موقعه أفضل
+            
+        adjusted_prices.append(base_price * adjustment_factor)
         
-        # القيمة المعدلة لكل مقارن
-        adj_price = comp['القيمة السنوية للعقد'] * act_adj * time_adj * loc_adj
-        adjusted_list.append(adj_price)
-        
-    return sum(adjusted_list) / len(adjusted_list)
+    return sum(adjusted_prices) / len(adjusted_prices)
 
 def get_legal_grace_period(years):
-    """المادة 24: فترة التجهيز (10% من مدة العقد، بحد أقصى 3 سنوات)"""
+    # تطبيق المادة 24 من اللائحة التنفيذية
     return min(years * 0.10, 3.0)
